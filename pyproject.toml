@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agspray"
+version = "0.1.0"
+description = "Chemical waste under degraded state estimation in agricultural spraying"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "pandas",
+    "pyarrow",
+    "joblib",
+    "pyyaml",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+graph = ["gtsam==4.3a2"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["agspray*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

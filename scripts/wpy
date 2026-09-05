@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Run python from the WSL harness venv against the repo on /mnt/d.
+exec wsl.exe -d Ubuntu-24.04 -e bash -lc "source ~/venvs/agspray/bin/activate && cd /mnt/d/GTSAP_agtech_test && python $*"

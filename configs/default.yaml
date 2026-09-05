@@ -1,0 +1,77 @@
+# Default scenario.  Sized so that the full-batch estimator - the ceiling of the
+# ladder, and by far the most expensive rung - stays cheap enough to run a
+# hundred paired trials per configuration.  A 120 x 64 m block is a realistic
+# small field and keeps the factor graph in the low thousands of variables.
+
+field:
+  length_x: 120.0
+  row_spacing: 8.0
+  n_rows: 9
+  plant_pitch: 3.0          # landmark grid pitch; density gives ~37 features per frame
+  plant_jitter: 0.12
+  treeline_offset: 6.0      # windbreak sits 6 m outside the y = 0 edge
+  sun_azimuth_deg: 20.0     # nearly along-row, so the two leg directions differ
+  sun_elevation_deg: 22.0
+
+flight:
+  altitude: 15.0
+  cruise_speed: 8.0
+  turn_duration: 4.0
+  passes: 1
+  return_gap_s: 0.0
+  start_pad: 3.0
+
+spray:
+  swath_radius: 5.0         # 10 m swath against 8 m spacing -> designed overlap
+  rate_lpm: 12.0
+  gate_on_turns: true
+  grid_res_frac: 0.125      # 0.625 m cells, well below the swath radius
+  throttle_on_covariance: false
+  throttle_sigma_frac: 0.35
+  retreatment_cost_per_m2: 3.0
+
+imu:
+  rate_hz: 200.0
+  accel_noise_density: 0.02
+  gyro_noise_density: 0.0015
+  accel_bias_rw: 0.0008
+  gyro_bias_rw: 5.0e-5
+  accel_bias_init: 0.05
+  gyro_bias_init: 0.002
+
+gnss:
+  rate_hz: 5.0
+  sigma_horizontal: 0.6
+  sigma_vertical: 1.1
+  multipath_radius: 20.0
+  multipath_bias: 2.5
+  outage_prob_in_zone: 0.75
+
+camera:
+  rate_hz: 10.0
+  width: 640
+  height: 480
+  fx: 480.0
+  fy: 480.0
+  pixel_sigma: 1.2
+  max_features: 40
+  detect_prob: 0.9
+
+degradation:
+  wind: 0.6
+  canopy: 0.6
+  drift_occlusion: 0.5
+  multipath: 0.7
+  sun_washout: 0.5
+  row_aliasing: 0.8
+
+estimator:
+  keyframe_hz: 5.0
+  robust: true
+  estimate_bias: true
+  process_noise_scale: 1.0
+  # lag_short / lag_medium / lag_long are left unset so they are derived from
+  # the flight parameters in config.Derived.  See RESULTS.md for the values.
+
+run:
+  seed: 0
