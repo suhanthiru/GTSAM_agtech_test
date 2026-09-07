@@ -57,6 +57,11 @@ class SprayCfg:
     throttle_on_covariance: bool = False  # second experiment (causal version of Q2)
     throttle_sigma_frac: float = 0.35     # sigma/r at which the rate is fully cut
     retreatment_cost_per_m2: float = 3.0  # cost multiplier applied to gap area
+    tick_hz: float = 20.0                 # boom on/off decision rate
+    coverage_gate_frac: float = 0.35      # section control: spray only if this much
+                                          # of the swath is *believed* untreated
+    over_dose_frac: float = 1.5           # dose above this counts as double-dosed
+    under_dose_frac: float = 0.5          # dose below this counts as a gap
 
 
 @dataclass
@@ -131,6 +136,12 @@ class EstimatorCfg:
     lag_long: float | None = None
     assoc_gate_chi2: float = 9.21         # 2 dof, 99%
     assoc_descriptor_thresh: float = 0.55
+    assoc_new_per_frame: int = 12         # cap on tracks initialised per frame
+    assoc_min_separation: float = 0.8     # m, below this a new track is a duplicate
+    lm_sigma0: float = 1.5                # m, 1-sigma of a plane-backprojected feature
+    landmark_lifetime_scale: float = 1.0  # lifetime = scale x row period, same for
+                                          # every method: only the *pose* horizon varies
+    max_live_landmarks: int = 320
     latency_tol_m: float = 0.25           # convergence band for correction latency
 
 
@@ -224,6 +235,8 @@ class Derived:
     row_spacing_over_swath: float
     field_width: float
     field_area: float
+    landmark_lifetime: float
+    target_dose: float
 
     @staticmethod
     def of(cfg: Config) -> "Derived":
@@ -266,6 +279,9 @@ class Derived:
             row_spacing_over_swath=cfg.field_.row_spacing / (2.0 * r),
             field_width=width,
             field_area=cfg.field_.length_x * width,
+            landmark_lifetime=est.landmark_lifetime_scale * row_period,
+            # Litres per square metre laid down by one straight pass at cruise.
+            target_dose=(cfg.spray.rate_lpm / 60.0) / (v * 2.0 * r),
         )
 
 

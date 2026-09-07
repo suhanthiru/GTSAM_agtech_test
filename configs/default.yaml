@@ -48,7 +48,7 @@ gnss:
   outage_prob_in_zone: 0.75
 
 camera:
-  rate_hz: 10.0
+  rate_hz: 5.0            # sampled at the keyframe rate so all methods see one frame set
   width: 640
   height: 480
   fx: 480.0
