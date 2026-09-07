@@ -21,7 +21,9 @@ dependencies = [
 [project.optional-dependencies]
 graph = ["gtsam==4.3a2"]
 dev = ["pytest"]
-# LiDAR demo: ray casting and scan registration (Linux/WSL wheels)
+# LiDAR demo: ray casting and scan registration.  Both wheels exist for Linux
+# and for Windows, so the simulator and the map run on either side; only the
+# factor graph is tied to WSL, because gtsam has no Windows wheel.
 lidar = ["open3d>=0.19", "small_gicp"]
 # LiDAR demo: offscreen rendering and video encoding (Windows host)
 render = ["pyvista", "imageio", "imageio-ffmpeg", "pillow"]

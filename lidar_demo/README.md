@@ -32,9 +32,11 @@ On `data/run01`, seed 0:
 
 ## Running it
 
-The simulator and the graph run in WSL, because GTSAM has no Windows wheel and
-Open3D is used for ray casting. The renderer runs on the Windows host, because
-that is where the GPU and pyvista are. They exchange a run directory.
+Only the factor graph needs WSL, because GTSAM has no Windows wheel. Everything
+else runs on the Windows host: Open3D provides the ray caster and the
+registration backend there, and pyvista the renderer. The two sides exchange a
+run directory, so either can be swapped for the other on any step except the
+solve.
 
 ```bash
 scripts/wsl_setup.sh          # once: creates ~/venvs/agspray with gtsam
@@ -45,8 +47,12 @@ wsl -d Ubuntu-24.04 -e bash -lc "source ~/venvs/agspray/bin/activate && pip inst
 ```
 
 ```bash
-python -m pip install pyvista imageio imageio-ffmpeg pillow
+python -m pip install open3d pyvista imageio imageio-ffmpeg pillow
 ```
+
+Both registration backends are available on either side. `register.py` prefers
+`small_gicp` and falls back to Open3D's generalised ICP, and a test pins the two
+to the same transform convention rather than assuming it.
 
 Then, in order:
 
