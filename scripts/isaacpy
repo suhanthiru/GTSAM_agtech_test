@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Run python from the Isaac Sim venv against the repo.
+#
+# Isaac Sim 5.1 and Isaac Lab 2.3.2 need Python 3.11 and live in their own
+# environment, separate from both the repo's Windows interpreter and the WSL one
+# that carries gtsam.  This is the equivalent of scripts/wpy for that side.
+#
+# Two settings are forced here rather than left to each caller.
+#
+# OMNI_KIT_ACCEPT_EULA records that the user accepted the NVIDIA Omniverse
+# licence agreement on 2026-09-07; without it Kit stops on an interactive prompt
+# and fails with EOF under any non-interactive shell.
+#
+# The graphics API is D3D12.  On this machine the Vulkan backend segfaults
+# inside rtx.scenedb while the material library compiles its base MDL shaders,
+# which happens on the first frame, so every run dies about seven seconds in
+# regardless of which experience file is used.  On D3D12 the same build starts in
+# nine seconds, and NVIDIA's own compatibility checker -- which itself runs on
+# D3D12 -- reports this GPU and driver as supported.  Override with
+# LIDAR_DEMO_ISAAC_API=vulkan if a future driver fixes it.
+set -euo pipefail
+
+ISAAC_VENV="${ISAAC_VENV:-D:/isaac/venv}"
+REPO="${REPO:-D:/GTSAP_agtech_test}"
+
+export OMNI_KIT_ACCEPT_EULA=YES
+export LIDAR_DEMO_ISAAC_API="${LIDAR_DEMO_ISAAC_API:-d3d12}"
+export PYTHONPATH="${REPO}${PYTHONPATH:+;$PYTHONPATH}"
+
+cd "$REPO"
+exec "${ISAAC_VENV}/Scripts/python.exe" "$@"

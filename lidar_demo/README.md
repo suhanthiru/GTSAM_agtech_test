@@ -180,6 +180,32 @@ survey any MEMS part leaks hundreds. The drift target was kept, because it is
 what the viewer sees as ghosting, and the grade adjusted to industrial MEMS.
 `check_imu_drift.py` prints both the measured drift and the closed-form budget.
 
+## Isaac Sim
+
+Isaac Sim 5.1 and Isaac Lab 2.3.2 are installed in their own environment at
+`D:\isaacenv`, on Python 3.11, because Isaac Lab pins both. `scripts/isaacpy`
+runs anything against it, the way `scripts/wpy` does for the WSL side.
+
+```bash
+scripts/isaacpy -m lidar_demo.checks.check_isaac --json D:/isaac/check.json
+```
+
+Two things had to be settled to get it running, and both are recorded in that
+launcher rather than left for the next person to rediscover.
+
+The licence prompt. Kit asks for the NVIDIA Omniverse agreement on first launch
+and fails with EOF under any non-interactive shell. The user accepted it on
+2026-09-07 and `OMNI_KIT_ACCEPT_EULA=YES` records that.
+
+The graphics API. On this machine, an RTX 3080 Ti on driver 610.74, the Vulkan
+backend segfaults inside `rtx.scenedb` about seven seconds in, while the
+material library compiles its base MDL shaders. That happens on the first frame,
+so it takes every run with it no matter which experience file is used, and no
+renderer setting avoids it. On D3D12 the same build starts in nine seconds.
+NVIDIA's own compatibility checker runs on D3D12 and reports this GPU and driver
+as supported, which is the clue that led there. `LIDAR_DEMO_ISAAC_API=vulkan`
+overrides it if a future driver fixes the crash.
+
 ## Phase two
 
 The scene, the flight and the LiDAR sit behind `sim/backend.py`, whose contract

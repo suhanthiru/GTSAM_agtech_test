@@ -8,6 +8,14 @@ pass/fail would hide which one went wrong.
 
 Nothing here touches the demo.  It exists so that the first time an Isaac
 backend misbehaves, it is already known whether the problem is the install.
+
+**Kit is asked for D3D12 rather than Vulkan.**  On this machine -- an RTX 3080 Ti
+on driver 610.74 -- the Vulkan backend segfaults inside ``rtx.scenedb`` while the
+material library compiles its base MDL shaders, which happens on the first frame
+and so takes every run with it, whatever experience file is used.  The same
+build on D3D12 starts in about ten seconds and NVIDIA's own compatibility
+checker, which runs on D3D12, reports the driver and GPU as supported.  Set
+``LIDAR_DEMO_ISAAC_API=vulkan`` to override.
 """
 
 from __future__ import annotations
@@ -20,17 +28,41 @@ import time
 from pathlib import Path
 
 
+# Filled in by main() so the report is written before the app tears the process
+# down; see the note in check().
+args_json_path = [None]
+
+
 def _line(name: str, ok: bool, detail: str = "") -> str:
     return f"  {'ok  ' if ok else 'FAIL'}  {name:<28} {detail}"
 
 
-def check(headless: bool = True, verbose: bool = True) -> dict:
+GRAPHICS_API_ARG = {"d3d12": "--/app/vulkan=false",
+                    "vulkan": "--/app/vulkan=true"}
+
+
+def select_graphics_api(api: str | None = None) -> str:
+    """Put the graphics-API choice on ``sys.argv``, where Kit reads it."""
+    import os
+
+    api = (api or os.environ.get("LIDAR_DEMO_ISAAC_API")
+           or ("d3d12" if platform.system() == "Windows" else "vulkan")).lower()
+    arg = GRAPHICS_API_ARG.get(api)
+    if arg and arg not in sys.argv:
+        sys.argv.append(arg)
+    return api
+
+
+def check(headless: bool = True, verbose: bool = True,
+          api: str | None = None) -> dict:
     out: dict = {"python": sys.version.split()[0],
                  "executable": sys.executable,
                  "platform": platform.platform()}
     log = print if verbose else (lambda *a, **k: None)
 
+    out["graphics_api"] = select_graphics_api(api)
     log(f"python {out['python']} at {sys.executable}")
+    log(f"graphics api: {out['graphics_api']}")
 
     # ---- 1. the package imports ----
     try:
@@ -50,7 +82,8 @@ def check(headless: bool = True, verbose: bool = True) -> dict:
     try:
         from isaacsim import SimulationApp
 
-        app = SimulationApp({"headless": bool(headless)})
+        app = SimulationApp({"headless": bool(headless),
+                             "renderer": "RayTracedLighting"})
         out["app_start_s"] = round(time.time() - t0, 1)
         out["app"] = True
         log(_line("SimulationApp starts", True,
@@ -119,17 +152,21 @@ def check(headless: bool = True, verbose: bool = True) -> dict:
             out["isaaclab"] = False
             out["isaaclab_error"] = str(exc)
             log(_line("import isaaclab", False, str(exc)[:120]))
+        out["usable"] = bool(out.get("app") and out.get("stage")
+                             and any(out.get("sensor_modules", {}).values()))
+        log("")
+        log(f"usable for the demo: {'yes' if out['usable'] else 'not yet'}")
     finally:
+        # Write the report before closing: SimulationApp.close() ends the
+        # process, so anything printed after it never appears.
+        if args_json_path[0]:
+            Path(args_json_path[0]).write_text(json.dumps(out, indent=2))
+            log(f"wrote {args_json_path[0]}")
         if app is not None:
             try:
                 app.close()
             except Exception:
                 pass
-
-    out["usable"] = bool(out.get("app") and out.get("stage")
-                         and any(out.get("sensor_modules", {}).values()))
-    log("")
-    log(f"usable for the demo: {'yes' if out['usable'] else 'not yet'}")
     return out
 
 
@@ -138,12 +175,12 @@ def main(argv=None) -> int:
     ap.add_argument("--gui", action="store_true",
                     help="start with a window instead of headless")
     ap.add_argument("--json", default=None, help="also write the result here")
-    args = ap.parse_args(argv)
+    ap.add_argument("--api", default=None, choices=["d3d12", "vulkan"],
+                    help="graphics backend; D3D12 by default on Windows")
+    args, _ = ap.parse_known_args(argv)
 
-    rep = check(headless=not args.gui)
-    if args.json:
-        Path(args.json).write_text(json.dumps(rep, indent=2))
-        print(f"wrote {args.json}")
+    args_json_path[0] = args.json
+    rep = check(headless=not args.gui, api=args.api)
     return 0 if rep.get("usable") else 1
 
 
