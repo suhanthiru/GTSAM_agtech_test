@@ -296,9 +296,13 @@ class GraphCfg:
 @dataclass
 class MapCfg:
     cell: float = 0.10               # m, raster grid
-    ground_pct: float = 5.0
-    canopy_pct: float = 95.0
-    min_pts_per_cell: int = 3
+    # A bare-earth percentile taken through a standing crop can only sit at or
+    # above the soil, never below it, so the estimate is biased upward and the
+    # bias shrinks as the percentile drops and as more points are demanded of a
+    # cell before it is trusted.
+    ground_pct: float = 2.0
+    canopy_pct: float = 98.0
+    min_pts_per_cell: int = 5
     stride: int = 1                  # point decimation when projecting
 
 
