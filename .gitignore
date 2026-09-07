@@ -15,3 +15,6 @@ figures/
 tier2/out/
 .idea/
 .vscode/
+
+# recorded runs
+data/

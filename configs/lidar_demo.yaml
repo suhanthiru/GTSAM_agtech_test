@@ -1,0 +1,79 @@
+# LiDAR reconstruction demo.  Anything omitted takes the dataclass default in
+# lidar_demo/config.py, where every field is documented.
+
+scene:
+  survey_x: 120.0
+  survey_y: 84.0
+  context: 40.0
+  grid_dx: 0.25
+  slope_deg: 1.5
+  slope_azimuth_deg: 20.0
+  relief_amp: 2.0
+  ditch_depth: 1.5
+  ditch_halfwidth: 2.5
+  row_spacing: 2.0          # wide on purpose: at realistic 0.75 m, reconstruction
+                            # error smears the rows into unreadable mush
+  canopy_healthy: 1.2
+  canopy_stressed: 0.6
+  treeline_y: -6.0
+
+flight:
+  altitude: 15.0
+  speed: 5.0
+  spacing: 12.0
+  n_passes: 8
+  turn_time: 5.0
+  treeline_pass: 7          # last boustrophedon leg runs the treeline: GNSS drops
+  crossing_x: 60.0          # closing pass, perpendicular; a strong global constraint
+
+lidar:
+  n_rings: 64
+  n_cols: 512
+  rate_hz: 10.0
+  vfov_deg: [-20.0, 20.0]
+  max_range: 100.0
+  max_scan_angle_deg: 50.0   # hard aperture from body nadir; sets the usable swath
+  range_sigma: 0.02
+
+extrinsic:
+  nominal_rpy_deg: [0.0, 35.0, 0.0]     # what the pipeline is told
+  nominal_t: [0.10, 0.0, -0.05]
+  true_rpy_offset_deg: [0.8, 1.5, 2.0]  # what the airframe actually has
+
+imu:
+  rate_hz: 400.0
+  accel_noise_density: 0.011
+  gyro_noise_density: 8.0e-5
+  accel_bias_rw: 2.0e-4
+  gyro_bias_rw: 5.0e-6
+  drift_window_s: 30.0
+
+gnss:
+  rate_hz: 1.0
+  sigma_horizontal: 0.5
+  sigma_vertical: 1.0       # never isotropic
+  dropout_radius: 9.0
+
+blue:
+  gnss_tau_s: 20.0          # the one knob that sets how much drift reaches the blue map
+
+graph:
+  keyframe_trans: 1.0
+  keyframe_rot_deg: 10.0
+  voxel: 0.2
+  overlap_radius: 10.0
+  rounds: 2
+
+map:
+  cell: 0.10
+
+render:
+  section_x: 60.0
+  fps: 30
+
+run:
+  seed: 0
+  name: run01
+  out_root: data
+  backend: open3d
+  workers: 8

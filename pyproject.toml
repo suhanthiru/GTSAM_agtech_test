@@ -21,9 +21,13 @@ dependencies = [
 [project.optional-dependencies]
 graph = ["gtsam==4.3a2"]
 dev = ["pytest"]
+# LiDAR demo: ray casting and scan registration (Linux/WSL wheels)
+lidar = ["open3d>=0.19", "small_gicp"]
+# LiDAR demo: offscreen rendering and video encoding (Windows host)
+render = ["pyvista", "imageio", "imageio-ffmpeg", "pillow"]
 
 [tool.setuptools.packages.find]
-include = ["agspray*"]
+include = ["agspray*", "lidar_demo*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
