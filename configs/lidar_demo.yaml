@@ -15,6 +15,10 @@ scene:
                             # error smears the rows into unreadable mush
   canopy_healthy: 1.2
   canopy_stressed: 0.6
+  roughness: 0.05           # clod-scale soil texture
+  canopy_texture: 0.14      # clump-scale canopy variation; without it the rows
+                            # run parallel to the flight lines and scan matching
+                            # has nothing to hold on to along track
   treeline_y: -6.0
 
 flight:
@@ -34,6 +38,7 @@ lidar:
   max_range: 100.0
   max_scan_angle_deg: 50.0   # hard aperture from body nadir; sets the usable swath
   range_sigma: 0.02
+  canopy_penetration: 0.05  # first return sits near the canopy top
 
 extrinsic:
   nominal_rpy_deg: [0.0, 35.0, 0.0]     # what the pipeline is told
@@ -55,14 +60,19 @@ gnss:
   dropout_radius: 9.0
 
 blue:
-  gnss_tau_s: 20.0          # the one knob that sets how much drift reaches the blue map
+  cov_rate_hz: 40.0         # covariance propagation rate for the loosely-coupled filter
 
 graph:
   keyframe_trans: 1.0
   keyframe_rot_deg: 10.0
+  submap_radius: 2.0        # m of travel gathered into each keyframe cloud;
+                            # also sets the along-track pair stride, so paired
+                            # submaps never share sweeps
   voxel: 0.2
   overlap_radius: 10.0
-  rounds: 2
+  max_seq_shift: [1.5, 6.0]     # m, deg a registration may move from its init
+  max_cross_shift: [2.5, 8.0]   # before it is rejected as having slid
+  rounds: 6                     # stops early once the mount settles
 
 map:
   cell: 0.10

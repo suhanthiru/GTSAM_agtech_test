@@ -54,7 +54,20 @@ class SceneCfg:
 
     row_spacing: float = 2.0         # m, crop rows (wide on purpose, see spec 2.2)
     furrow_amp: tuple[float, float] = (0.05, 0.15)   # m ridge height range
-    roughness: float = 0.01          # m, broadband so nothing is exactly planar
+    roughness: float = 0.05          # m, clod-scale soil texture
+    roughness_lambda: tuple[float, float] = (0.5, 3.0)   # m
+
+    # Variation in canopy height at the scale of a clump of heads.  Not
+    # decoration, and the amplitude is not free.  The crop rows run parallel to
+    # the flight lines, so the furrows constrain a scan matcher across track and
+    # not at all along it; if the canopy is modelled as a smooth sheet, the
+    # along-track direction has no geometry in it and registration slides metres
+    # while still fitting.  Real wheat is nothing like smooth at this scale --
+    # lodged patches, uneven emergence and clump-to-clump height differences run
+    # to 10-15 cm -- and that texture has to survive the 20 cm registration
+    # voxel to be of any use, which fixes both the amplitude and the wavelength.
+    canopy_texture: float = 0.14     # m, 1-sigma of the clump-scale variation
+    canopy_texture_lambda: tuple[float, float] = (0.6, 3.0)   # m
 
     canopy_healthy: float = 1.2      # m
     canopy_stressed: float = 0.6
@@ -150,8 +163,13 @@ class LidarCfg:
     range_sigma: float = 0.02        # m
     canopy_extinction: float = 1.1   # 1/m, Beer-Lambert through the crop
     crown_extinction: float = 1.6    # 1/m, through a tree crown
-    canopy_penetration: float = 0.15  # m, mean depth of a return stopped in crop
-    crown_penetration: float = 0.40  # m, same for tree crowns
+    # Mean depth into the vegetation at which a stopped return comes back.  Kept
+    # small on purpose: a first-return sensor triggers near the top of the
+    # canopy, and if this is allowed to grow past the canopy's own height
+    # texture it buries the surface shape under noise and scan matching over the
+    # crop stops working.
+    canopy_penetration: float = 0.05  # m, mean depth of a return stopped in crop
+    crown_penetration: float = 0.30  # m, same for tree crowns
     canopy_dropout: float = 0.15
     crown_dropout: float = 0.35
     base_dropout: float = 0.02
@@ -216,15 +234,15 @@ class GnssCfg:
 
 @dataclass
 class BlueCfg:
-    """The drone's own belief: strapdown plus a loose pull toward GNSS.
+    """The drone's own belief: a loosely-coupled inertial/GNSS filter.
 
-    ``gnss_tau_s`` is the single knob that sets how much drift survives into the
-    blue map, and therefore whether gate 2 lands in the 1-2 m band.  Its value
-    is written into the solve log every run.
+    How much drift survives into the blue map is set by the sensors and by the
+    length of the GNSS outage, not by a tuning knob: the filter is a plain
+    error-state update against the measured position noise.  What it cannot do
+    is revisit the past, and the mounting angle is not in its state at all.
     """
 
-    gnss_tau_s: float = 20.0
-    gnss_vel_tau_s: float = 2.0
+    cov_rate_hz: float = 40.0        # covariance propagation rate (see blue.py)
     align_static_s: float = 0.5      # s of specific force used for initial roll/pitch
     align_heading_s: float = 3.0     # s of GNSS motion used for initial yaw
 
@@ -234,13 +252,26 @@ class GraphCfg:
     keyframe_trans: float = 1.0      # m
     keyframe_rot_deg: float = 10.0
 
+    # Each keyframe's submap gathers the sweeps collected within this much
+    # travel either side of it, so consecutive submaps overlap heavily.  A
+    # single keyframe's own metre of flying is a thin crescent of ground with
+    # too little extent to register against anything; a few metres of it spans
+    # real terrain and usually a prop.
+    submap_radius: float = 4.0       # m of travel either side
+    submap_max_points: int = 80000
+
     voxel: float = 0.2               # m, registration downsample
-    voxel_coarse: float = 1.0
     max_corr: float = 0.6            # m, fine stage
-    max_corr_coarse: float = 3.0
+    voxel_coarse: float = 0.4        # keep the crop texture: at a 1 m voxel the
+    max_corr_coarse: float = 1.5     # canopy averages to a plane and GICP slides
     min_inlier_frac: float = 0.3
-    max_seq_shift: tuple[float, float] = (2.0, 10.0)    # m, deg from init
-    max_cross_shift: tuple[float, float] = (5.0, 15.0)
+    # How far a registration is allowed to move from its initial guess before
+    # it is thrown away.  A field of crop rows is close to self-similar along
+    # track, so a matcher handed a poor start will happily slide several metres
+    # and report an excellent fit; the resulting measurement then looks like a
+    # mounting-angle error and the solve chases it.
+    max_seq_shift: tuple[float, float] = (1.5, 6.0)     # m, deg from init
+    max_cross_shift: tuple[float, float] = (2.5, 8.0)
 
     overlap_radius: float = 10.0     # m
     overlap_min_dt: float = 5.0      # s
@@ -258,7 +289,7 @@ class GraphCfg:
     prior_E_trans: float = 0.02
     lm_max_iters: int = 60
     lm_stage_a_iters: int = 20
-    rounds: int = 2
+    rounds: int = 6
     converge_E_deg: float = 0.02
 
 
@@ -320,25 +351,36 @@ class DemoConfig:
     # ---------------- io ----------------
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "DemoConfig":
+    def from_yaml(cls, path: str | Path, strict: bool = True) -> "DemoConfig":
         with open(path, "r") as fh:
             raw = yaml.safe_load(fh) or {}
-        return cls.from_dict(raw)
+        return cls.from_dict(raw, strict=strict)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "DemoConfig":
+    def from_dict(cls, raw: dict[str, Any], strict: bool = True) -> "DemoConfig":
         cfg = cls()
+        unknown = []
         for key, val in raw.items():
             if not hasattr(cfg, key):
-                raise KeyError(f"unknown config section {key!r}")
+                if strict:
+                    raise KeyError(f"unknown config section {key!r}")
+                unknown.append(key)
+                continue
             section = getattr(cfg, key)
             known = {f.name for f in fields(section)}
             for sub, v in (val or {}).items():
                 if sub not in known:
-                    raise KeyError(f"unknown config key {key}.{sub!r}")
+                    if strict:
+                        raise KeyError(f"unknown config key {key}.{sub!r}")
+                    unknown.append(f"{key}.{sub}")
+                    continue
                 if isinstance(getattr(section, sub), tuple) and isinstance(v, list):
                     v = tuple(v)
                 setattr(section, sub, v)
+        if unknown:
+            import warnings
+            warnings.warn(f"ignoring config keys not in the current schema: "
+                          f"{', '.join(unknown)}", stacklevel=2)
         return cfg
 
     def to_dict(self) -> dict[str, Any]:
@@ -446,3 +488,14 @@ def load(path: str | Path | None = None) -> DemoConfig:
     if path is None:
         path = Path(__file__).resolve().parent.parent / "configs" / "lidar_demo.yaml"
     return DemoConfig.from_yaml(path)
+
+
+def load_run_config(run_dir: str | Path) -> DemoConfig:
+    """Read the config a recorded run was made with.
+
+    Tolerant of keys the current schema no longer has: an archived run is a
+    record of what the simulator did, and it should stay readable after the
+    estimator's own settings have moved on.  Anything dropped is warned about
+    rather than silently ignored.
+    """
+    return DemoConfig.from_yaml(Path(run_dir) / "config_resolved.yaml", strict=False)

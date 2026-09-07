@@ -127,8 +127,10 @@ def build_heightfield(cfg: SceneCfg, rng: np.random.Generator) -> Heightfield:
         1.0 + np.cos(2.0 * np.pi * (X / 71.0 + Y / 53.0)))
     z = z + amp * np.cos(2.0 * np.pi * Y / cfg.row_spacing)
 
-    # 5. broadband roughness so no surface anywhere is exactly planar
-    z = z + cfg.roughness * _cosine_modes(X, Y, rng, 12, 0.8, 4.0) / 3.0
+    # 5. clod-scale soil texture, isotropic, so no patch of bare ground is
+    #    planar and a scan matcher has something to hold on to in every
+    #    direction rather than only across the rows
+    z = z + cfg.roughness * _cosine_modes(X, Y, rng, 16, *cfg.roughness_lambda) / 4.0
 
     z_terrain = z
 
@@ -162,9 +164,14 @@ def _canopy(cfg: SceneCfg, X: np.ndarray, Y: np.ndarray, ditch_dist: np.ndarray,
     block = by * cfg.block_nx + bx
     H = heights[block]
 
-    # rows: the canopy is tallest on the ridge and thins in the furrow
+    # Rows: the canopy is tallest on the ridge and thins in the furrow.  On top
+    # of that, plant-scale texture in *both* directions.  The rows alone run
+    # parallel to the flight lines and so constrain nothing along track; the
+    # texture is what a scan matcher over a crop actually registers on.
     row = 0.75 + 0.25 * np.cos(2.0 * np.pi * Y / cfg.row_spacing)
-    canopy = H * row + rng.normal(scale=0.03, size=X.shape)
+    texture = (cfg.canopy_texture
+               * _cosine_modes(X, Y, rng, 20, *cfg.canopy_texture_lambda) / 4.0)
+    canopy = H * (row + texture) + rng.normal(scale=0.02, size=X.shape)
 
     outside = (X < 0.0) | (X > cfg.survey_x) | (Y < 0.0) | (Y > cfg.survey_y)
     canopy[outside] = 0.0

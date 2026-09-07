@@ -79,7 +79,13 @@ def test_canopy_has_blocks_including_bare_ground(cfg):
     c = hf.canopy_h[inside]
     assert (c < 0.05).mean() > 0.10                    # bare patches exist
     assert (c > cfg.scene.canopy_healthy * 0.7).mean() > 0.20   # so do healthy ones
-    assert c.max() < cfg.scene.canopy_healthy * 1.3
+
+    # Clump-scale texture puts a few heads above the nominal stand height, which
+    # is how a real crop looks and is what scan matching registers on, but the
+    # typical height still has to be the height that was asked for.
+    tall = c[c > cfg.scene.canopy_healthy * 0.7]
+    assert np.median(tall) == pytest.approx(cfg.scene.canopy_healthy, rel=0.25)
+    assert c.max() < cfg.scene.canopy_healthy * 1.6
 
 
 def test_surface_is_terrain_plus_canopy(cfg):
