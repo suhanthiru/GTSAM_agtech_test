@@ -11,6 +11,12 @@ Two tiers:
 * `tier2/` - Isaac Lab replay of the same runs for video and stills. No
   statistics come from this tier.
 
+Alongside them, `lidar_demo/` is a separate piece of work: a drone LiDAR survey
+whose map is broken by navigation drift and by a LiDAR bolted on two degrees off
+the drawing, and a GTSAM factor graph that recovers the trajectory and the
+mounting angle together. It shares `agspray`'s trajectory, IMU and measurement
+helpers and nothing else. See `lidar_demo/README.md`.
+
 ## Setup (tier 1, WSL / Linux)
 
 GTSAM only ships Linux and macOS wheels, so the harness runs under WSL2 on a
@@ -45,4 +51,5 @@ agspray/
 configs/               yaml configs
 tests/
 tier2/                 Isaac Lab scene, replay, render
+lidar_demo/            LiDAR boresight demo (see its own README)
 ```

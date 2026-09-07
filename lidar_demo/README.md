@@ -1,0 +1,183 @@
+# GTSAM in action: repairing a broken LiDAR map
+
+A drone surveys a wheat field. Its navigation drifts, and its LiDAR is bolted on
+a couple of degrees off where the drawing says. The resulting map is broken in
+two recognisable ways. A factor graph then solves for the trajectory *and* the
+mounting angle at once, and the map snaps into shape.
+
+From **one** recorded set of returns the pipeline builds **two** maps:
+
+| | trajectory and mount used | colour |
+|---|---|---|
+| blue | the aircraft's own belief, nominal mount | `#2E6FD6` |
+| green | the graph's answer, recovered mount | `#1D9E75` |
+
+Same returns. A different answer about where the drone was and where the sensor
+was pointing. That difference is the whole film.
+
+## What comes out
+
+On `data/run01`, seed 0:
+
+| | |
+|---|---|
+| mounting angle, true | roll 0.800, pitch 36.500, yaw 2.000 degrees |
+| mounting angle, recovered | roll 0.804, pitch 36.466, yaw 2.013, +/- 0.03 |
+| error | **0.036 degrees**, against a 0.2 degree gate |
+| trajectory, blue vs truth | 1.33 m XY rms, 0.79 m Z, 1.35 degrees attitude |
+| trajectory, green vs truth | 0.21 m XY rms, 0.09 m Z, 0.15 degrees attitude |
+| bare earth, blue vs truth | 29 cm rms, with a 59 cm ripple at the flight lines |
+| bare earth, green vs truth | 12 cm rms |
+| the two flight directions disagree | 24 cm in blue, 2.3 cm in green |
+
+## Running it
+
+The simulator and the graph run in WSL, because GTSAM has no Windows wheel and
+Open3D is used for ray casting. The renderer runs on the Windows host, because
+that is where the GPU and pyvista are. They exchange a run directory.
+
+```bash
+scripts/wsl_setup.sh          # once: creates ~/venvs/agspray with gtsam
+```
+
+```bash
+wsl -d Ubuntu-24.04 -e bash -lc "source ~/venvs/agspray/bin/activate && pip install open3d small_gicp"
+```
+
+```bash
+python -m pip install pyvista imageio imageio-ffmpeg pillow
+```
+
+Then, in order:
+
+```bash
+python -m lidar_demo.checks.preview_scene --config configs/lidar_demo.yaml
+```
+
+```bash
+python -m lidar_demo.checks.check_imu_drift --config configs/lidar_demo.yaml
+```
+
+```bash
+scripts/wpy -m lidar_demo.sim.record --config configs/lidar_demo.yaml
+```
+
+```bash
+scripts/wpy -m lidar_demo.checks.gate1_truth_project --run data/run01
+```
+
+```bash
+scripts/wpy -m lidar_demo.est.solve --run data/run01 --threads 12
+```
+
+```bash
+scripts/wpy -m lidar_demo.map.build --run data/run01
+```
+
+```bash
+python -m lidar_demo.render.gates --run data/run01
+```
+
+```bash
+python -m lidar_demo.render.sequence --run data/run01
+```
+
+Recording takes about a minute, the solve about six, the map forty seconds and
+the film ninety seconds. `--scale 0.4 --fps 15` gives a preview render in ten
+seconds.
+
+## Layout
+
+```
+lidar_demo/
+  frames.py      the frame conventions, and the only place they are defined
+  config.py      dataclasses and yaml, mirroring agspray/config.py
+  io.py          the run directory: manifest, sweeps, streams, PLY
+  sim/           terrain, props, flight, LiDAR, IMU, GNSS, the recorder
+  est/           deskew, the blue filter, registration, the graph, the solve
+  map/           projection, rasters, the two clouds
+  render/        the gate figures first, then the seven shots
+  checks/        scene preview, IMU drift, gate 1
+```
+
+## The gates
+
+Purely visual, and in order. Nothing proceeds past a failing one.
+
+| | | |
+|---|---|---|
+| 1 | truth-projected cloud matches the terrain | 1.6 cm rms at 380 pts/m2 |
+| 2 | blue drift lands in the 1-2 m band | 1.33 m rms |
+| 3 | corrugation visible, one ridge per flight line | 59 cm peak to peak |
+| 4 | green hugs the true profile | 12 cm rms, 2.5x closer than blue |
+| 5 | mounting angle within 0.2 degrees | 0.036 degrees |
+| 6 | the collapse reads smoothly | worst frame moves 5% of a point's travel |
+
+`gate1_truth_project.py` runs twice, and the two runs have to disagree.
+Projected through the mount the simulator built, the cloud sits on the terrain.
+Projected through the mount the pipeline is told about, it lifts 27 cm and every
+swath tilts, alternating sign on all seven adjacent pairs.
+
+## Things that were not obvious
+
+**Sweeps are stored in the sensor frame, uncompensated.** Store world points and
+an answer about where the drone was is already baked in, and reprojecting the
+same returns through two trajectories becomes impossible. Every azimuth column
+is cast from the true pose at its own sub-sweep instant, so the recording
+carries a real motion smear for the deskewing to remove.
+
+**Registering adjacent keyframes is worthless here.** Their submaps are built
+from the same sweeps, so the matcher hands back the seed trajectory and the
+graph learns nothing while believing it has been told something. Pairs are
+stepped by the submap window so the two clouds are independent.
+
+**The footprint is 14 m ahead of the aircraft.** Two keyframes on opposite
+passes that are close together are flying towards each other, and their
+footprints hardly overlap. Overlap is detected between forward-projected
+footprints, not between aircraft.
+
+**Inter-pass pairs are registered only after the along-track solve.** Started
+from a seed that is metres out over the GNSS-denied stretch, the matcher slides
+along a field that is nearly self-similar, and that bias is indistinguishable
+from a mounting-angle error. This one was worth about a degree of yaw.
+
+**The prior on the mount stays at nominal across rounds.** Re-centring it on the
+last estimate removes the only absolute anchor and it ratchets away.
+
+**A crop has to have texture in it.** The rows run parallel to the flight lines,
+so the furrows constrain a scan matcher across track and not at all along it. A
+canopy modelled as a smooth sheet leaves that direction free and registration
+slides metres while reporting an excellent fit.
+
+**Pulses go through the canopy.** Without Beer-Lambert transmission there are no
+ground returns under standing crop, so there is no bare-earth surface, no
+terrain raster, and a cross-section with the ground visible only in the bare
+patches.
+
+## Two places the brief needed correcting
+
+**On observability.** The brief says the mounting angle would be unobservable if
+every pass flew the same heading. It would not be. The gauge that hides it --
+rotate every pose, counter-rotate the mount -- leaves aircraft positions
+untouched, so GNSS can never break it, but the IMU's gravity-referenced attitude
+can. In the toy survey the tests build, reversing alternate passes roughly
+halves the recovered uncertainty rather than deciding whether there is an answer
+at all. What the reversal really buys is the picture: the same error tilts an
+outbound swath one way and a return swath the other, so the map comes out
+corrugated instead of smoothly wrong, and smoothly wrong is far harder to show
+anyone. `tests/lidar_demo/test_factors.py` asserts all three claims.
+
+**On the IMU.** The brief asks for a consumer MEMS profile multiplied five to ten
+times *and* for 1-2 m of dead-reckoned drift. Those cannot both hold: at that
+noise density a 30 second window leaks about eleven metres, and over the whole
+survey any MEMS part leaks hundreds. The drift target was kept, because it is
+what the viewer sees as ghosting, and the grade adjusted to industrial MEMS.
+`check_imu_drift.py` prints both the measured drift and the closed-form budget.
+
+## Phase two
+
+The scene, the flight and the LiDAR sit behind `sim/backend.py`, whose contract
+is world-frame ray origins and directions in, distances and surface classes out.
+`IsaacLabBackend` is the stub that an Isaac Lab RTX LiDAR fills in; the beauty
+pass in `render/beauty.py` is an honest stand-in that shares positions with the
+simulated scene and nothing else, and Blender is where it is meant to end up.
