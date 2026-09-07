@@ -45,13 +45,23 @@ def true_extrinsic(cfg: DemoConfig) -> Extrinsic:
 
 
 def record(cfg: DemoConfig, out_root: str | Path | None = None,
-           limit: int | None = None, verbose: bool = True) -> Path:
+           limit: int | None = None, verbose: bool = True,
+           backend=None, scene=None) -> Path:
+    """Fly the pattern and write the run directory.
+
+    ``backend`` and ``scene`` may be supplied by a caller that has already built
+    them -- the Isaac entry point does, because its backend needs a live
+    ``SimulationApp`` and a USD stage that exist before the recording starts.
+    Passing them in keeps the scene, and therefore the run, identical either
+    way; everything else here is the same whoever traces the rays.
+    """
     root = Path(out_root or cfg.run.out_root) / cfg.run.name
     writer = RunWriter(root)
     seeds = np.random.SeedSequence(cfg.run.seed).spawn(4)
 
     t0 = time.time()
-    scene = build_scene(cfg.scene, np.random.default_rng(seeds[0]))
+    if scene is None:
+        scene = build_scene(cfg.scene, np.random.default_rng(seeds[0]))
     export_scene(scene, root / "scene")
     if verbose:
         print(f"scene: {scene.n_triangles/1e6:.2f} M triangles, "
@@ -87,8 +97,9 @@ def record(cfg: DemoConfig, out_root: str | Path | None = None,
 
     # ---- sweeps ----
     model = LidarModel.from_cfg(cfg.lidar)
-    backend = make_backend(cfg.run.backend)
-    backend.build(scene)
+    if backend is None:
+        backend = make_backend(cfg.run.backend)
+        backend.build(scene)
 
     n_sweeps = int(np.floor(path.duration / model.period))
     if limit is not None:

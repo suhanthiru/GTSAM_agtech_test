@@ -206,10 +206,49 @@ NVIDIA's own compatibility checker runs on D3D12 and reports this GPU and driver
 as supported, which is the clue that led there. `LIDAR_DEMO_ISAAC_API=vulkan`
 overrides it if a future driver fixes the crash.
 
+## The Isaac backend
+
+`lidar_demo/sim/isaac/` writes the scene into a USD stage and traces the sweeps
+against it with warp on the GPU. Everything above the tracer is shared with the
+offline path: same scene, same flight, same beam table, same rolling shutter,
+same noise, same run directory. Swapping the backend changes who traces the rays
+and nothing else, which is what makes the two runs comparable.
+
+```bash
+scripts/isaacpy -m lidar_demo.sim.isaac.record --name run_isaac --compare
+```
+
+```bash
+scripts/isaacpy -m pytest tests/lidar_demo/test_isaac.py -q
+```
+
+Over a sample of sweeps cast from identical poses, the two tracers agree to
+**0.000 cm** median range difference across 100% of shared beams, and gate 1 on
+the Isaac recording reproduces the offline numbers: 1.59 cm against 1.55 cm on
+the truth mount, the same 378 pts/m2 and 11.9 m half swath, seven of seven swath
+tilts alternating, 17.3 cm of corrugation against 17.5 cm. A full run takes 38
+seconds, faster than the Open3D path.
+
+Three decisions in there are worth knowing about.
+
+The backend casts against geometry read back **out** of the stage, not against
+the numpy arrays the stage was written from. That way a mistake in the USD
+export shows up as a bad cast instead of hiding behind correct source data.
+
+The cast is a warp kernel rather than Isaac Lab's `raycast_mesh`. That wrapper
+takes and returns torch tensors, and Isaac Sim 5.1 installs torch 2.7.0+cpu, a
+build with no CUDA at all, so every ray would travel through host memory and
+trace on the CPU of a machine whose GPU warp is perfectly happy to use. The
+kernel is the same `wp.mesh_query_ray` call their wrapper makes, without the
+round trip. `LIDAR_DEMO_ISAAC_RAYCAST=isaaclab` switches to theirs.
+
+The pip `isaaclab` package is only a bootstrap stub that expects the source tree
+beside it. The real library is the clone at `D:\isaac\IsaacLab`, and
+`scripts/isaacpy` puts it first on the path so it shadows the stub.
+
 ## Phase two
 
-The scene, the flight and the LiDAR sit behind `sim/backend.py`, whose contract
-is world-frame ray origins and directions in, distances and surface classes out.
-`IsaacLabBackend` is the stub that an Isaac Lab RTX LiDAR fills in; the beauty
-pass in `render/beauty.py` is an honest stand-in that shares positions with the
-simulated scene and nothing else, and Blender is where it is meant to end up.
+What remains is the beauty pass. The stage now carries the terrain, the props, a
+sun and a drone prim, so Isaac can render the opening shot over the same field
+the LiDAR flew, and Blender can read the same file. `render/beauty.py` is still
+the pyvista stand-in, and says so.

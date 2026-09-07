@@ -21,11 +21,16 @@
 set -euo pipefail
 
 ISAAC_VENV="${ISAAC_VENV:-D:/isaac/venv}"
+ISAAC_LAB="${ISAAC_LAB:-D:/isaac/IsaacLab}"
 REPO="${REPO:-D:/GTSAP_agtech_test}"
 
 export OMNI_KIT_ACCEPT_EULA=YES
 export LIDAR_DEMO_ISAAC_API="${LIDAR_DEMO_ISAAC_API:-d3d12}"
-export PYTHONPATH="${REPO}${PYTHONPATH:+;$PYTHONPATH}"
+
+# The pip `isaaclab` package is only a bootstrap stub: it expects the source
+# tree beside it and exposes nothing on its own.  The real library is in the
+# clone, and it has to come first on the path so it shadows the stub.
+export PYTHONPATH="${ISAAC_LAB}/source/isaaclab;${REPO}${PYTHONPATH:+;$PYTHONPATH}"
 
 cd "$REPO"
 exec "${ISAAC_VENV}/Scripts/python.exe" "$@"

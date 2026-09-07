@@ -19,7 +19,9 @@ Three implementations:
     path is casting what we think it is.
 
 ``IsaacLabBackend``
-    Not implemented yet; the docstring states the contract it will fulfil.
+    In :mod:`lidar_demo.sim.isaac.backend`.  Isaac Lab's warp kernels, tracing
+    against a USD stage.  Imported only on request, because it needs Kit
+    running.
 """
 
 from __future__ import annotations
@@ -230,37 +232,20 @@ class HeightfieldBackend:
 # ---------------------------------------------------------------------------
 
 
-class IsaacLabBackend:
-    """Placeholder for the Isaac Lab RTX LiDAR.
-
-    The contract is the same one every backend fulfils: given ``(N, 3)`` world
-    ray origins and unit directions, return a distance along each ray, the world
-    surface normal, and a class id from ``lidar_demo.io.CLASS_NAMES``.
-
-    In Isaac Lab the natural mapping is a ``RayCaster`` sensor whose mesh
-    prim paths cover the USD stage built from the same :class:`SceneMesh`, so
-    the two backends see geometrically identical scenes and a recorded run can
-    be compared sweep for sweep.  Sub-sweep column timing stays here rather than
-    in the sensor: the rolling shutter is a property of the model, not of the
-    renderer, and keeping it on this side is what lets the two agree.
-    """
-
-    name = "isaaclab"
-
-    def build(self, scene: SceneMesh) -> None:
-        raise NotImplementedError(
-            "Isaac Lab backend is phase 2; use open3d or heightfield for now")
-
-    def cast(self, origins_W: np.ndarray, dirs_W: np.ndarray,
-             layer: str = "surface") -> RayHits:
-        raise NotImplementedError
-
-
 def make_backend(name: str) -> RayCastBackend:
+    """Build a backend by name.
+
+    The Isaac one is imported lazily and only on request, because importing it
+    reaches for ``omni`` and ``pxr``, which fail unless a ``SimulationApp`` is
+    already running.  Everything else has to keep working on a machine with no
+    Isaac installed at all.
+    """
     if name == "open3d":
         return Open3DBackend()
     if name == "heightfield":
         return HeightfieldBackend()
     if name == "isaaclab":
+        from .isaac.backend import IsaacLabBackend
+
         return IsaacLabBackend()
     raise ValueError(f"unknown ray-cast backend {name!r}")
