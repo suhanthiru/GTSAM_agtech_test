@@ -223,11 +223,25 @@ scripts/isaacpy -m pytest tests/lidar_demo/test_isaac.py -q
 ```
 
 Over a sample of sweeps cast from identical poses, the two tracers agree to
-**0.000 cm** median range difference across 100% of shared beams, and gate 1 on
-the Isaac recording reproduces the offline numbers: 1.59 cm against 1.55 cm on
-the truth mount, the same 378 pts/m2 and 11.9 m half swath, seven of seven swath
-tilts alternating, 17.3 cm of corrugation against 17.5 cm. A full run takes 38
-seconds, faster than the Open3D path.
+**0.000 cm** median range difference across 100% of shared beams. A full run
+takes 38 seconds, faster than the Open3D path.
+
+The whole pipeline was then run again on the Isaac recording, and it lands in
+the same place:
+
+| | offline (Open3D) | Isaac (warp + USD) |
+|---|---|---|
+| gate 2 blue drift, m rms | 1.33 | 1.33 |
+| gate 2b direction split, blue, cm | 24 | 24 |
+| gate 2b direction split, green, cm | 2.3 | 2.4 |
+| gate 3 corrugation, cm peak to peak | 58.7 | 59.0 |
+| gate 4 green bare earth, cm rms | 11.7 | 11.0 |
+| gate 5 mount error, deg | 0.036 | 0.035 |
+
+The mount comes back at 0.807 / 36.466 / 1.998 degrees against a true 0.800 /
+36.500 / 2.000, and the trajectory at 0.18 m XY and 0.08 m Z, both a shade
+better than the offline run for no reason other than which rays happened to
+survive dropout.
 
 Three decisions in there are worth knowing about.
 
